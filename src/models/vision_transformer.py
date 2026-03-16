@@ -16,6 +16,49 @@ from src.models.utils.pos_embs import get_2d_sincos_pos_embed, get_3d_sincos_pos
 from src.utils.tensors import trunc_normal_
 
 
+def _normalize_attention_pattern(depth, attention_pattern=None, use_area_attention=False, area_attention_layers=None):
+    if attention_pattern is None:
+        pattern = ["global"] * depth
+        if not use_area_attention:
+            return pattern
+
+        if area_attention_layers is None:
+            area_attention_layers = [0, int(depth * 0.75)]
+
+        if (
+            len(area_attention_layers) == 2
+            and isinstance(area_attention_layers[0], int)
+            and isinstance(area_attention_layers[1], int)
+        ):
+            layer_ids = range(area_attention_layers[0], area_attention_layers[1])
+        else:
+            layer_ids = area_attention_layers
+
+        for layer_id in layer_ids:
+            if layer_id < 0 or layer_id >= depth:
+                raise ValueError(f"Layer index {layer_id} is out of range for depth={depth}")
+            pattern[layer_id] = "area"
+        return pattern
+
+    if isinstance(attention_pattern, str):
+        attention_pattern = [p.strip() for p in attention_pattern.split(",") if p.strip()]
+
+    pattern = []
+    for attn_type in attention_pattern:
+        attn_type = attn_type.lower()
+        if attn_type in {"full", "global"}:
+            attn_type = "global"
+        elif attn_type in {"area", "local"}:
+            attn_type = "area"
+        else:
+            raise ValueError(f"Unsupported attention type {attn_type!r}")
+        pattern.append(attn_type)
+
+    if len(pattern) != depth:
+        raise ValueError(f"attention_pattern must have {depth} entries, got {len(pattern)}")
+    return pattern
+
+
 class VisionTransformer(nn.Module):
     """Vision Transformer"""
 
@@ -45,6 +88,7 @@ class VisionTransformer(nn.Module):
         use_activation_checkpointing=False,
         use_rope=False,
         handle_nonsquare_inputs=True,
+        attention_pattern=None,
         # -- ST-A² (Spatiotemporal Area Attention) params
         use_area_attention=False,
         area_attention_layers=None,
@@ -89,12 +133,12 @@ class VisionTransformer(nn.Module):
         else:
             self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=False)
 
-        # -- Determine which layers use area attention (hybrid allocation).
-        # area_attention_layers: [start, end) layer indices, or None for all.
-        # Default hybrid: first 75% of layers get area attention, last 25% full.
-        if use_area_attention and area_attention_layers is None:
-            area_attention_layers = [0, int(depth * 0.75)]
-        aa_start, aa_end = area_attention_layers if use_area_attention else (0, 0)
+        self.attention_pattern = _normalize_attention_pattern(
+            depth=depth,
+            attention_pattern=attention_pattern,
+            use_area_attention=use_area_attention,
+            area_attention_layers=area_attention_layers,
+        )
 
         # Attention Blocks
         self.blocks = nn.ModuleList(
@@ -115,7 +159,7 @@ class VisionTransformer(nn.Module):
                     attn_drop=attn_drop_rate,
                     drop_path=dpr[i],
                     norm_layer=norm_layer,
-                    use_area_attention=use_area_attention and (aa_start <= i < aa_end),
+                    attention_type=self.attention_pattern[i],
                     area_spatial_splits=area_spatial_splits,
                     area_temporal_splits=area_temporal_splits,
                     area_residual_scale=area_residual_scale,

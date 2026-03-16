@@ -97,6 +97,7 @@ def main(args, resume_preempt=False):
     use_pred_silu = cfgs_model.get("use_pred_silu", False)
     wide_silu = cfgs_model.get("wide_silu", True)
     # -- ST-A² (Spatiotemporal Area Attention)
+    attention_pattern = cfgs_model.get("attention_pattern", None)
     use_area_attention = cfgs_model.get("use_area_attention", False)
     area_attention_layers = cfgs_model.get("area_attention_layers", None)
     area_spatial_splits = cfgs_model.get("area_spatial_splits", 2)
@@ -224,6 +225,7 @@ def main(args, resume_preempt=False):
         wide_silu=wide_silu,
         use_rope=use_rope,
         use_activation_checkpointing=use_activation_checkpointing,
+        attention_pattern=attention_pattern,
         use_area_attention=use_area_attention,
         area_attention_layers=area_attention_layers,
         area_spatial_splits=area_spatial_splits,

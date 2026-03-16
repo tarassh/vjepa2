@@ -104,9 +104,9 @@ def load_checkpoint(
         epoch = checkpoint["epoch"]
 
     # -- loading encoder
-    # Use strict=False when annealing to allow loading baseline checkpoints
-    # into area-attention models (RoPEAreaAttention has identical weight
-    # structure to RoPEAttention, so all shared params load correctly).
+    # Baseline full-attention encoder weights are state-dict compatible with
+    # hybrid area-attention encoders. We still keep strict=False in annealing
+    # mode here to tolerate unrelated checkpoint/config drift in resumed runs.
     pretrained_dict = checkpoint["encoder"]
     msg = encoder.load_state_dict(pretrained_dict, strict=not is_anneal)
     logger.info(f"loaded pretrained encoder from epoch {epoch} with msg: {msg}")
@@ -167,6 +167,7 @@ def init_video_model(
     use_pred_silu=False,
     wide_silu=False,
     use_activation_checkpointing=False,
+    attention_pattern=None,
     # -- ST-A² params
     use_area_attention=False,
     area_attention_layers=None,
@@ -185,6 +186,7 @@ def init_video_model(
         wide_silu=wide_silu,
         use_activation_checkpointing=use_activation_checkpointing,
         use_rope=use_rope,
+        attention_pattern=attention_pattern,
         use_area_attention=use_area_attention,
         area_attention_layers=area_attention_layers,
         area_spatial_splits=area_spatial_splits,

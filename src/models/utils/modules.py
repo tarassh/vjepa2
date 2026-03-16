@@ -780,6 +780,7 @@ class Block(nn.Module):
         is_causal=False,
         grid_size=16,
         use_rope=False,
+        attention_type="global",
         use_area_attention=False,
         area_spatial_splits=2,
         area_temporal_splits=2,
@@ -788,7 +789,16 @@ class Block(nn.Module):
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
-        if use_rope and use_area_attention:
+        if attention_type == "full":
+            attention_type = "global"
+        if use_area_attention and attention_type == "global":
+            attention_type = "area"
+        if attention_type not in {"global", "area"}:
+            raise ValueError(f"Unsupported attention_type={attention_type!r}")
+
+        self.attention_type = attention_type
+
+        if use_rope and attention_type == "area":
             self.attn = RoPEAreaAttention(
                 dim,
                 num_heads=num_heads,
